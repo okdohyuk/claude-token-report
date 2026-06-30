@@ -35,6 +35,31 @@
 
 ## 사용법
 
+### 🤖 Claude Code로 한 번에 (클론 + 단가 최신화 + 실행)
+
+[Claude Code](https://claude.com/claude-code)를 쓴다면, 아래 프롬프트를 **그대로 복사해 붙여넣기**만 하면
+저장소 클론 → 모델 단가 최신화 → 리포트 생성 → 브라우저 열기까지 자동으로 처리됩니다.
+
+```text
+claude-token-report로 내 Claude Code 토큰 사용량 리포트를 만들어줘. 순서대로 진행해:
+
+1. https://github.com/okdohyuk/claude-token-report 를 ~/claude-token-report 에 클론해줘.
+   이미 디렉토리가 있으면 새로 클론하지 말고 git pull 로 최신화만 해줘.
+2. Anthropic 공식 가격 페이지(https://www.anthropic.com/pricing#api)에서 현재 Claude 모델
+   단가를 확인해서 generate_report.py 의 PRICING 딕셔너리를 최신 값으로 업데이트해줘.
+   - 단위: USD per 1M tokens
+   - 각 모델(opus / sonnet / haiku / fable)의 키: in(입력) / out(출력) / cw(캐시 쓰기) / cr(캐시 읽기)
+   - 가격을 확인하지 못한 항목은 기존 값을 유지하고, 무엇을 어떻게 바꿨는지 표로 알려줘.
+3. python generate_report.py --months 3 를 실행하고, 생성된 claude-token-report.html 을 열어줘.
+
+주의: data.json 과 생성된 *.html 같은 산출물에는 내 프로젝트명 등 개인정보가 들어 있으니
+절대 커밋하지 마. (PRICING 수정 자체는 코드 변경이라 커밋해도 괜찮아.)
+```
+
+> 단가는 수시로 바뀌므로, 정확한 비용을 보려면 실행 전에 이 프롬프트로 `PRICING`을 한 번 갱신하는 것을 권장합니다.
+
+### 수동 실행
+
 ```bash
 # 1) 저장소 클론
 git clone https://github.com/okdohyuk/claude-token-report.git
