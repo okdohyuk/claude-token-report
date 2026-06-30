@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude 토큰 사용량 리포트</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0c0d12; --bg2:#13151d; --card:#181a24; --card2:#1f2230;
+    --line:#2a2d3c; --txt:#e8e9f0; --txt2:#9498ab; --txt3:#666b80;
+    --accent:#d4915d; --accent2:#7aa2f7; --mint:#56d4a0; --pink:#e06c9f;
+    --yellow:#e3c567; --red:#e05c6e;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.25);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,
+      "Apple SD Gothic Neo","Segoe UI",Roboto,sans-serif;
+    background:radial-gradient(1200px 600px at 80% -10%,#1a1c28 0%,var(--bg) 55%);
+    color:var(--txt); line-height:1.55; -webkit-font-smoothing:antialiased;
+    min-height:100vh; padding:0 0 80px;
+  }
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  header.hero{padding:56px 0 28px}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;
+    color:var(--accent);letter-spacing:.04em;text-transform:uppercase;margin-bottom:14px}
+  .eyebrow .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 0 4px rgba(212,145,93,.18)}
+  h1{font-size:38px;font-weight:800;letter-spacing:-.02em;line-height:1.15}
+  h1 .grad{background:linear-gradient(92deg,var(--accent),var(--pink) 60%,var(--accent2));
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{color:var(--txt2);font-size:15px;margin-top:12px;max-width:680px}
+  .period{display:inline-flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .chip{font-size:12.5px;font-weight:600;color:var(--txt2);background:var(--card);
+    border:1px solid var(--line);padding:6px 12px;border-radius:999px}
+  .chip b{color:var(--txt)}
+
+  section{margin-top:40px}
+  .sec-title{font-size:13px;font-weight:700;color:var(--txt3);text-transform:uppercase;
+    letter-spacing:.08em;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+  .sec-title::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:14px}
+  .kpi{background:linear-gradient(180deg,var(--card),var(--bg2));border:1px solid var(--line);
+    border-radius:16px;padding:20px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .kpi::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;
+    background:var(--bar,var(--accent));opacity:.9}
+  .kpi .label{font-size:12.5px;color:var(--txt2);font-weight:600}
+  .kpi .val{font-size:28px;font-weight:800;letter-spacing:-.02em;margin-top:8px;line-height:1}
+  .kpi .meta{font-size:12px;color:var(--txt3);margin-top:8px}
+
+  .grid2{display:grid;grid-template-columns:1.5fr 1fr;gap:18px}
+  @media(max-width:860px){.grid2{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
+    padding:22px 22px 18px;box-shadow:var(--shadow)}
+  .card h3{font-size:15px;font-weight:700;margin-bottom:4px}
+  .card .desc{font-size:12.5px;color:var(--txt2);margin-bottom:16px}
+  .chart-box{position:relative;width:100%}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--line)}
+  th{font-size:11.5px;color:var(--txt3);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  tbody tr:hover{background:var(--card2)}
+  .pname{font-weight:600;display:flex;align-items:center;gap:9px}
+  .swatch{width:9px;height:9px;border-radius:3px;flex:none}
+  .barcell{position:relative}
+  .barcell .fill{position:absolute;left:10px;bottom:6px;height:4px;border-radius:2px;
+    background:linear-gradient(90deg,var(--accent),var(--pink));opacity:.6}
+  .mono{font-variant-numeric:tabular-nums}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:14px}
+  .legend .it{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--txt2)}
+  .legend .it b{color:var(--txt);font-weight:600}
+  .legend .sw{width:11px;height:11px;border-radius:3px}
+
+  .note{margin-top:14px;font-size:12px;color:var(--txt3);background:var(--bg2);
+    border:1px dashed var(--line);border-radius:12px;padding:14px 16px;line-height:1.6}
+  .note b{color:var(--txt2)}
+  .empty{padding:48px 24px;text-align:center;color:var(--txt2)}
+  footer{margin-top:48px;padding-top:24px;border-top:1px solid var(--line);
+    font-size:12px;color:var(--txt3);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  footer a{color:var(--txt2)}
+  .model-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .model-row:last-child{border-bottom:none}
+  .model-row .nm{width:78px;font-weight:700;font-size:14px;text-transform:capitalize}
+  .model-row .track{flex:1;height:10px;background:var(--bg2);border-radius:6px;overflow:hidden}
+  .model-row .tf{height:100%;border-radius:6px}
+  .model-row .vv{width:96px;text-align:right;font-size:12.5px;color:var(--txt2);font-variant-numeric:tabular-nums}
+  .model-row .cc{width:80px;text-align:right;font-size:12.5px;font-weight:600;color:var(--mint);font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow"><span class="dot"></span>Claude Code · Usage Report</div>
+    <h1>Claude 토큰 사용량 <span class="grad">리포트</span></h1>
+    <p class="sub">로컬 Claude Code 대화 로그(<span class="mono" id="fcount"></span>개 세션 파일)를 집계한 토큰 사용 현황입니다.
+       캐시 읽기/쓰기를 포함한 전체 토큰과 모델·프로젝트별 분포를 보여줍니다.</p>
+    <div class="period">
+      <span class="chip">기간 <b id="pPeriod"></b></span>
+      <span class="chip">활성 <b id="pDays"></b>일</span>
+      <span class="chip">생성일 <b id="pGen"></b></span>
+    </div>
+  </header>
+
+  <div id="app"></div>
+
+  <footer>
+    <span>데이터 출처 · ~/.claude/projects 로컬 대화 로그</span>
+    <span>generated by <a href="https://github.com/okdohyuk/claude-token-report">claude-token-report</a></span>
+  </footer>
+</div>
+
+<script>
+const DATA = __DATA__;
+const fmt = n => n>=1e9 ? (n/1e9).toFixed(2)+'B' : n>=1e6 ? (n/1e6).toFixed(1)+'M' : n>=1e3 ? (n/1e3).toFixed(1)+'K' : String(n);
+const fmtFull = n => n.toLocaleString('en-US');
+const usd = n => '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const C = {accent:'#d4915d',accent2:'#7aa2f7',mint:'#56d4a0',pink:'#e06c9f',yellow:'#e3c567',red:'#e05c6e',grey:'#5a5f73'};
+const MODEL_COLOR = {opus:C.accent,sonnet:C.accent2,haiku:C.mint,fable:C.pink,other:C.grey};
+
+const days = Object.keys(DATA.daily).sort();
+const t = DATA.totals;
+
+document.getElementById('fcount').textContent = fmtFull(DATA.meta.files_processed);
+document.getElementById('pGen').textContent = '__GEN__';
+document.getElementById('pPeriod').textContent = days.length ? (days[0] + ' ~ ' + days[days.length-1]) : '데이터 없음';
+document.getElementById('pDays').textContent = days.length;
+
+const app = document.getElementById('app');
+
+if(!days.length){
+  app.innerHTML = `<div class="card empty">선택한 기간(${DATA.meta.months_requested.join(', ')})에 집계할 사용량 데이터가 없습니다.<br>
+    <code>--months</code> 값을 늘리거나 <code>--projects-dir</code> 경로를 확인하세요.</div>`;
+} else {
+  renderReport();
+}
+
+function renderReport(){
+  app.innerHTML = `
+  <section>
+    <div class="sec-title">핵심 지표</div>
+    <div class="kpis" id="kpis"></div>
+  </section>
+  <section>
+    <div class="sec-title">사용량 추이</div>
+    <div class="grid2">
+      <div class="card">
+        <h3>일별 토큰 사용량</h3>
+        <div class="desc">날짜별 총 토큰(캐시 포함). 막대 위 라인은 출력 토큰입니다.</div>
+        <div class="chart-box" style="height:300px"><canvas id="dailyChart"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>토큰 구성</h3>
+        <div class="desc">입력 · 출력 · 캐시 쓰기 · 캐시 읽기 비중</div>
+        <div class="chart-box" style="height:220px"><canvas id="compChart"></canvas></div>
+        <div class="legend" id="compLegend"></div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="sec-title">모델별 분포</div>
+    <div class="grid2">
+      <div class="card">
+        <h3>모델별 토큰 &amp; 추정 비용</h3>
+        <div class="desc">총 토큰 기준 비중과 모델별 추정 비용(USD)</div>
+        <div id="modelBars" style="margin-top:8px"></div>
+      </div>
+      <div class="card">
+        <h3>월별 사용량</h3>
+        <div class="desc">월간 총 토큰</div>
+        <div class="chart-box" style="height:220px"><canvas id="monthChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="sec-title">프로젝트별 사용량 (Top 15)</div>
+    <div class="card">
+      <table>
+        <thead><tr>
+          <th>프로젝트</th><th class="num">총 토큰</th><th class="num">메시지</th>
+          <th class="num">세션</th><th class="num">출력 토큰</th><th class="num">비중</th>
+        </tr></thead>
+        <tbody id="projBody"></tbody>
+      </table>
+    </div>
+  </section>
+  <div class="note" id="note"></div>`;
+
+  // KPIs
+  const kpis = [
+    {label:'총 토큰', val:fmt(t.total), meta:fmtFull(t.total)+' tokens', bar:C.accent},
+    {label:'추정 비용', val:usd(DATA.total_cost), meta:'공개 단가 기반 추정', bar:C.mint},
+    {label:'총 메시지', val:fmtFull(t.msgs), meta:'assistant 응답 수', bar:C.accent2},
+    {label:'출력 토큰', val:fmt(t.out), meta:fmtFull(t.out)+' tokens', bar:C.pink},
+    {label:'캐시 읽기', val:fmt(t.cr), meta:(t.total?((t.cr/t.total)*100).toFixed(1):0)+'% of total', bar:C.yellow},
+    {label:'활성 일수', val:days.length+'일', meta:'로그 존재 기간', bar:C.red},
+  ];
+  document.getElementById('kpis').innerHTML = kpis.map(k=>
+    `<div class="kpi" style="--bar:${k.bar}"><div class="label">${k.label}</div>
+     <div class="val">${k.val}</div><div class="meta">${k.meta}</div></div>`).join('');
+
+  new Chart(document.getElementById('dailyChart'),{
+    data:{labels:days.map(d=>d.slice(5)),datasets:[
+      {type:'bar',label:'총 토큰',yAxisID:'y',data:days.map(d=>DATA.daily[d].total),
+        backgroundColor:'rgba(212,145,93,.55)',borderColor:C.accent,borderWidth:0,borderRadius:4,order:2},
+      {type:'line',label:'출력 토큰',yAxisID:'y2',data:days.map(d=>DATA.daily[d].out),
+        borderColor:C.pink,backgroundColor:C.pink,tension:.35,pointRadius:2,borderWidth:2,fill:false,order:1}
+    ]},options:baseOpts({dualAxis:true})
+  });
+
+  const comp=[{k:'캐시 읽기',v:t.cr,c:C.yellow},{k:'캐시 쓰기',v:t.cw,c:C.accent},
+    {k:'출력',v:t.out,c:C.pink},{k:'입력',v:t.in,c:C.accent2}];
+  new Chart(document.getElementById('compChart'),{type:'doughnut',
+    data:{labels:comp.map(c=>c.k),datasets:[{data:comp.map(c=>c.v),
+      backgroundColor:comp.map(c=>c.c),borderColor:'#181a24',borderWidth:2,hoverOffset:6}]},
+    options:{cutout:'62%',plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>` ${c.label}: ${fmt(c.raw)} (${(c.raw/t.total*100).toFixed(1)}%)`}}}}});
+  document.getElementById('compLegend').innerHTML = comp.map(c=>
+    `<div class="it"><span class="sw" style="background:${c.c}"></span>${c.k} <b>${(c.v/t.total*100).toFixed(1)}%</b></div>`).join('');
+
+  const models = Object.entries(DATA.by_model).filter(([k,v])=>v.total>0).sort((a,b)=>b[1].total-a[1].total);
+  const maxModel = models.length?models[0][1].total:1;
+  document.getElementById('modelBars').innerHTML = models.map(([name,v])=>{
+    const pct=(v.total/maxModel*100).toFixed(1), share=(v.total/t.total*100).toFixed(1);
+    return `<div class="model-row"><div class="nm" style="color:${MODEL_COLOR[name]||C.grey}">${name}</div>
+      <div class="track"><div class="tf" style="width:${pct}%;background:${MODEL_COLOR[name]||C.grey}"></div></div>
+      <div class="vv">${fmt(v.total)} · ${share}%</div><div class="cc">${usd(v.cost||0)}</div></div>`;
+  }).join('');
+
+  const months=Object.keys(DATA.monthly).sort();
+  new Chart(document.getElementById('monthChart'),{type:'bar',
+    data:{labels:months,datasets:[{label:'총 토큰',data:months.map(m=>DATA.monthly[m].total),
+      backgroundColor:'rgba(122,162,247,.6)',borderColor:C.accent2,borderRadius:6,yAxisID:'y'}]},
+    options:baseOpts({})});
+
+  const maxProj=DATA.projects.length?DATA.projects[0].total:1;
+  document.getElementById('projBody').innerHTML = DATA.projects.slice(0,15).map((p,i)=>{
+    const share=(p.total/t.total*100).toFixed(1);
+    return `<tr><td><div class="pname"><span class="swatch" style="background:hsl(${(i*47)%360} 55% 60%)"></span>${esc(p.name)}</div></td>
+      <td class="num barcell">${fmt(p.total)}<div class="fill" style="width:${(p.total/maxProj*70).toFixed(1)}px"></div></td>
+      <td class="num">${fmtFull(p.msgs)}</td><td class="num">${p.sessions}</td>
+      <td class="num">${fmt(p.out)}</td><td class="num">${share}%</td></tr>`;
+  }).join('');
+
+  const nMonths=DATA.meta.months_requested.length;
+  document.getElementById('note').innerHTML =
+    `<b>데이터 범위 ·</b> 최근 ${nMonths}개월(${DATA.meta.months_requested.join(', ')})을 대상으로 했으며, 실제 로그가 존재하는 구간은 `
+    +`<b>${days[0]} ~ ${days[days.length-1]}</b> (약 ${days.length}일)입니다. 로그가 보관되지 않은 이전 기간은 집계에서 제외됩니다.<br><br>`
+    +`<b>토큰 구성 ·</b> 전체 토큰의 ${(t.cr/t.total*100).toFixed(1)}%가 캐시 읽기(cache read)입니다. Claude Code가 프롬프트 캐싱을 적극 활용하기 때문이며, 캐시 읽기는 일반 입력 대비 약 1/10 단가가 적용됩니다.<br><br>`
+    +`<b>비용 추정 주의 ·</b> 표시된 비용은 모델별 <i>공개 API 단가 추정치</i>로 계산한 값입니다. 구독 플랜·실제 청구액과 다를 수 있으며 참고용입니다.<br><br>`
+    +`<b>집계 방식 ·</b> assistant 메시지의 usage 필드를 합산했으며, message id + requestId 기준으로 중복을 제거(고유 메시지 ${fmtFull(DATA.meta.unique_messages)}건)했습니다.`;
+}
+
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+function baseOpts({dualAxis}){
+  const grid={color:'rgba(255,255,255,.05)',drawBorder:false};
+  const ticks={color:'#9498ab',font:{size:11}};
+  const o={responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+    plugins:{legend:{display:!!dualAxis,labels:{color:'#9498ab',usePointStyle:true,boxWidth:8,font:{size:11}}},
+      tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmtFull(c.raw)}`}}},
+    scales:{x:{grid:{display:false},ticks:Object.assign({maxRotation:0,autoSkip:true,maxTicksLimit:12},ticks)},
+      y:{grid,ticks:Object.assign({callback:v=>fmt(v)},ticks),beginAtZero:true}}};
+  if(dualAxis){o.scales.y2={position:'right',grid:{display:false},
+    ticks:Object.assign({callback:v=>fmt(v)},ticks),beginAtZero:true};}
+  return o;
+}
+</script>
+</body>
+</html>

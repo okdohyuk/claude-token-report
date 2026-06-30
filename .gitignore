@@ -1,0 +1,28 @@
+# ============================================================
+#  개인 데이터 — 절대 커밋 금지
+#  (집계 결과와 생성된 리포트에는 프로젝트명 등 개인 정보가 포함됨)
+# ============================================================
+# 집계 JSON
+data.json
+*.data.json
+/data*.json
+
+# 생성된 리포트 (template.html 과 examples/ 의 샘플은 예외)
+/claude-token-report.html
+/report.html
+/*-report.html
+/output/
+
+# Claude Code 로그가 실수로 복사된 경우 대비
+.claude/
+projects/
+
+# ----- OS / 에디터 / 파이썬 -----
+.DS_Store
+Thumbs.db
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.idea/
+.vscode/

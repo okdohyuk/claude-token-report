@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude 토큰 사용량 리포트</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0c0d12; --bg2:#13151d; --card:#181a24; --card2:#1f2230;
+    --line:#2a2d3c; --txt:#e8e9f0; --txt2:#9498ab; --txt3:#666b80;
+    --accent:#d4915d; --accent2:#7aa2f7; --mint:#56d4a0; --pink:#e06c9f;
+    --yellow:#e3c567; --red:#e05c6e;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.25);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,
+      "Apple SD Gothic Neo","Segoe UI",Roboto,sans-serif;
+    background:radial-gradient(1200px 600px at 80% -10%,#1a1c28 0%,var(--bg) 55%);
+    color:var(--txt); line-height:1.55; -webkit-font-smoothing:antialiased;
+    min-height:100vh; padding:0 0 80px;
+  }
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  header.hero{padding:56px 0 28px}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;
+    color:var(--accent);letter-spacing:.04em;text-transform:uppercase;margin-bottom:14px}
+  .eyebrow .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 0 4px rgba(212,145,93,.18)}
+  h1{font-size:38px;font-weight:800;letter-spacing:-.02em;line-height:1.15}
+  h1 .grad{background:linear-gradient(92deg,var(--accent),var(--pink) 60%,var(--accent2));
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{color:var(--txt2);font-size:15px;margin-top:12px;max-width:680px}
+  .period{display:inline-flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .chip{font-size:12.5px;font-weight:600;color:var(--txt2);background:var(--card);
+    border:1px solid var(--line);padding:6px 12px;border-radius:999px}
+  .chip b{color:var(--txt)}
+
+  section{margin-top:40px}
+  .sec-title{font-size:13px;font-weight:700;color:var(--txt3);text-transform:uppercase;
+    letter-spacing:.08em;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+  .sec-title::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:14px}
+  .kpi{background:linear-gradient(180deg,var(--card),var(--bg2));border:1px solid var(--line);
+    border-radius:16px;padding:20px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .kpi::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;
+    background:var(--bar,var(--accent));opacity:.9}
+  .kpi .label{font-size:12.5px;color:var(--txt2);font-weight:600}
+  .kpi .val{font-size:28px;font-weight:800;letter-spacing:-.02em;margin-top:8px;line-height:1}
+  .kpi .meta{font-size:12px;color:var(--txt3);margin-top:8px}
+
+  .grid2{display:grid;grid-template-columns:1.5fr 1fr;gap:18px}
+  @media(max-width:860px){.grid2{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
+    padding:22px 22px 18px;box-shadow:var(--shadow)}
+  .card h3{font-size:15px;font-weight:700;margin-bottom:4px}
+  .card .desc{font-size:12.5px;color:var(--txt2);margin-bottom:16px}
+  .chart-box{position:relative;width:100%}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--line)}
+  th{font-size:11.5px;color:var(--txt3);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  tbody tr:hover{background:var(--card2)}
+  .pname{font-weight:600;display:flex;align-items:center;gap:9px}
+  .swatch{width:9px;height:9px;border-radius:3px;flex:none}
+  .barcell{position:relative}
+  .barcell .fill{position:absolute;left:10px;bottom:6px;height:4px;border-radius:2px;
+    background:linear-gradient(90deg,var(--accent),var(--pink));opacity:.6}
+  .mono{font-variant-numeric:tabular-nums}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:14px}
+  .legend .it{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--txt2)}
+  .legend .it b{color:var(--txt);font-weight:600}
+  .legend .sw{width:11px;height:11px;border-radius:3px}
+
+  .note{margin-top:14px;font-size:12px;color:var(--txt3);background:var(--bg2);
+    border:1px dashed var(--line);border-radius:12px;padding:14px 16px;line-height:1.6}
+  .note b{color:var(--txt2)}
+  .empty{padding:48px 24px;text-align:center;color:var(--txt2)}
+  footer{margin-top:48px;padding-top:24px;border-top:1px solid var(--line);
+    font-size:12px;color:var(--txt3);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  footer a{color:var(--txt2)}
+  .model-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .model-row:last-child{border-bottom:none}
+  .model-row .nm{width:78px;font-weight:700;font-size:14px;text-transform:capitalize}
+  .model-row .track{flex:1;height:10px;background:var(--bg2);border-radius:6px;overflow:hidden}
+  .model-row .tf{height:100%;border-radius:6px}
+  .model-row .vv{width:96px;text-align:right;font-size:12.5px;color:var(--txt2);font-variant-numeric:tabular-nums}
+  .model-row .cc{width:80px;text-align:right;font-size:12.5px;font-weight:600;color:var(--mint);font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow"><span class="dot"></span>Claude Code · Usage Report</div>
+    <h1>Claude 토큰 사용량 <span class="grad">리포트</span></h1>
+    <p class="sub">로컬 Claude Code 대화 로그(<span class="mono" id="fcount"></span>개 세션 파일)를 집계한 토큰 사용 현황입니다.
+       캐시 읽기/쓰기를 포함한 전체 토큰과 모델·프로젝트별 분포를 보여줍니다.</p>
+    <div class="period">
+      <span class="chip">기간 <b id="pPeriod"></b></span>
+      <span class="chip">활성 <b id="pDays"></b>일</span>
+      <span class="chip">생성일 <b id="pGen"></b></span>
+    </div>
+  </header>
+
+  <div id="app"></div>
+
+  <footer>
+    <span>데이터 출처 · ~/.claude/projects 로컬 대화 로그</span>
+    <span>generated by <a href="https://github.com/okdohyuk/claude-token-report">claude-token-report</a></span>
+  </footer>
+</div>
+
+<script>
+const DATA = {"totals": {"in": 15128968, "out": 4049482, "cw": 19274295, "cr": 221372637, "total": 259825382, "msgs": 2745}, "total_cost": 847.39, "daily": {"2026-04-01": {"in": 188655, "out": 54419, "cw": 277357, "cr": 3042757, "total": 3563188, "msgs": 37}, "2026-04-02": {"in": 211799, "out": 46549, "cw": 233217, "cr": 2677058, "total": 3168623, "msgs": 37}, "2026-04-03": {"in": 86550, "out": 23495, "cw": 117165, "cr": 1443843, "total": 1671053, "msgs": 16}, "2026-04-04": {"in": 64055, "out": 18977, "cw": 83083, "cr": 759673, "total": 925788, "msgs": 11}, "2026-04-05": {"in": 17914, "out": 4878, "cw": 19448, "cr": 298048, "total": 340288, "msgs": 4}, "2026-04-06": {"in": 246062, "out": 68090, "cw": 309685, "cr": 3593322, "total": 4217159, "msgs": 44}, "2026-04-07": {"in": 321283, "out": 95477, "cw": 445801, "cr": 4896606, "total": 5759167, "msgs": 62}, "2026-04-08": {"in": 246186, "out": 68097, "cw": 310029, "cr": 3385057, "total": 4009369, "msgs": 44}, "2026-04-09": {"in": 287482, "out": 86238, "cw": 401271, "cr": 4377685, "total": 5152676, "msgs": 56}, "2026-04-10": {"in": 68826, "out": 17430, "cw": 76762, "cr": 967099, "total": 1130117, "msgs": 11}, "2026-04-11": {"in": 65696, "out": 19379, "cw": 89559, "cr": 1089012, "total": 1263646, "msgs": 11}, "2026-04-12": {"in": 90375, "out": 20847, "cw": 92165, "cr": 1287324, "total": 1490711, "msgs": 13}, "2026-04-13": {"in": 204901, "out": 59521, "cw": 284240, "cr": 2834659, "total": 3383321, "msgs": 39}, "2026-04-14": {"in": 320116, "out": 84802, "cw": 442860, "cr": 4863025, "total": 5710803, "msgs": 58}, "2026-04-15": {"in": 312549, "out": 82610, "cw": 418990, "cr": 3452218, "total": 4266367, "msgs": 53}, "2026-04-16": {"in": 207286, "out": 48607, "cw": 243309, "cr": 3051701, "total": 3550903, "msgs": 37}, "2026-04-17": {"in": 137498, "out": 40349, "cw": 169105, "cr": 2365765, "total": 2712717, "msgs": 27}, "2026-04-18": {"in": 63009, "out": 13105, "cw": 54309, "cr": 682952, "total": 813375, "msgs": 10}, "2026-04-19": {"in": 91772, "out": 25579, "cw": 111049, "cr": 1128099, "total": 1356499, "msgs": 16}, "2026-04-20": {"in": 358812, "out": 82464, "cw": 427245, "cr": 4660359, "total": 5528880, "msgs": 60}, "2026-04-21": {"in": 61106, "out": 15950, "cw": 71924, "cr": 1249634, "total": 1398614, "msgs": 12}, "2026-04-22": {"in": 218329, "out": 64347, "cw": 293067, "cr": 3736124, "total": 4311867, "msgs": 41}, "2026-04-23": {"in": 85393, "out": 20245, "cw": 101159, "cr": 1376895, "total": 1583692, "msgs": 13}, "2026-04-24": {"in": 114037, "out": 28254, "cw": 124389, "cr": 1833137, "total": 2099817, "msgs": 19}, "2026-04-25": {"in": 98813, "out": 32535, "cw": 149109, "cr": 1567101, "total": 1847558, "msgs": 20}, "2026-04-26": {"in": 75880, "out": 21347, "cw": 102086, "cr": 1423587, "total": 1622900, "msgs": 14}, "2026-04-27": {"in": 91508, "out": 21098, "cw": 135200, "cr": 1192656, "total": 1440462, "msgs": 16}, "2026-04-28": {"in": 129696, "out": 32638, "cw": 169552, "cr": 1751156, "total": 2083042, "msgs": 22}, "2026-04-29": {"in": 233832, "out": 56321, "cw": 266095, "cr": 2638129, "total": 3194377, "msgs": 39}, "2026-04-30": {"in": 304167, "out": 84395, "cw": 381783, "cr": 4153037, "total": 4923382, "msgs": 55}, "2026-05-01": {"in": 243035, "out": 58398, "cw": 291212, "cr": 3109466, "total": 3702111, "msgs": 42}, "2026-05-02": {"in": 58100, "out": 14771, "cw": 83930, "cr": 729216, "total": 886017, "msgs": 10}, "2026-05-03": {"in": 73975, "out": 18926, "cw": 94870, "cr": 1069751, "total": 1257522, "msgs": 14}, "2026-05-04": {"in": 13235, "out": 3439, "cw": 14334, "cr": 178618, "total": 209626, "msgs": 2}, "2026-05-05": {"in": 222326, "out": 65863, "cw": 279887, "cr": 3635617, "total": 4203693, "msgs": 41}, "2026-05-06": {"in": 135501, "out": 44083, "cw": 162591, "cr": 2082861, "total": 2425036, "msgs": 25}, "2026-05-07": {"in": 196760, "out": 59105, "cw": 261287, "cr": 2899926, "total": 3417078, "msgs": 37}, "2026-05-08": {"in": 111319, "out": 28536, "cw": 130881, "cr": 1440047, "total": 1710783, "msgs": 20}, "2026-05-09": {"in": 75195, "out": 20405, "cw": 99240, "cr": 1127869, "total": 1322709, "msgs": 14}, "2026-05-10": {"in": 94758, "out": 23329, "cw": 116526, "cr": 1481304, "total": 1715917, "msgs": 16}, "2026-05-11": {"in": 96008, "out": 29192, "cw": 119309, "cr": 1549390, "total": 1793899, "msgs": 17}, "2026-05-12": {"in": 263687, "out": 66544, "cw": 310014, "cr": 4017388, "total": 4657633, "msgs": 45}, "2026-05-13": {"in": 245166, "out": 62241, "cw": 321200, "cr": 4138566, "total": 4767173, "msgs": 45}, "2026-05-14": {"in": 123712, "out": 34441, "cw": 158072, "cr": 1455117, "total": 1771342, "msgs": 21}, "2026-05-15": {"in": 126370, "out": 30867, "cw": 136868, "cr": 2028991, "total": 2323096, "msgs": 22}, "2026-05-16": {"in": 41390, "out": 17385, "cw": 66349, "cr": 779729, "total": 904853, "msgs": 10}, "2026-05-17": {"in": 39585, "out": 13925, "cw": 53077, "cr": 562331, "total": 668918, "msgs": 9}, "2026-05-18": {"in": 230506, "out": 66327, "cw": 302211, "cr": 3730883, "total": 4329927, "msgs": 43}, "2026-05-19": {"in": 214693, "out": 47915, "cw": 273648, "cr": 2495999, "total": 3032255, "msgs": 35}, "2026-05-20": {"in": 174702, "out": 42737, "cw": 251044, "cr": 2474408, "total": 2942891, "msgs": 31}, "2026-05-21": {"in": 383076, "out": 102005, "cw": 517714, "cr": 5942033, "total": 6944828, "msgs": 73}, "2026-05-22": {"in": 293751, "out": 80948, "cw": 357610, "cr": 4828210, "total": 5560519, "msgs": 53}, "2026-05-23": {"in": 42990, "out": 11508, "cw": 49767, "cr": 726105, "total": 830370, "msgs": 9}, "2026-05-24": {"in": 51552, "out": 15659, "cw": 62872, "cr": 874620, "total": 1004703, "msgs": 9}, "2026-05-25": {"in": 244598, "out": 61632, "cw": 246333, "cr": 2490112, "total": 3042675, "msgs": 41}, "2026-05-26": {"in": 216061, "out": 50357, "cw": 293463, "cr": 3552632, "total": 4112513, "msgs": 39}, "2026-05-27": {"in": 157996, "out": 39621, "cw": 203816, "cr": 2413097, "total": 2814530, "msgs": 28}, "2026-05-28": {"in": 184780, "out": 47945, "cw": 246731, "cr": 2726924, "total": 3206380, "msgs": 36}, "2026-05-29": {"in": 0, "out": 0, "cw": 0, "cr": 0, "total": 0, "msgs": 0}, "2026-05-30": {"in": 48405, "out": 12799, "cw": 70829, "cr": 664904, "total": 796937, "msgs": 10}, "2026-05-31": {"in": 134382, "out": 26286, "cw": 122861, "cr": 2002387, "total": 2285916, "msgs": 21}, "2026-06-01": {"in": 165904, "out": 38247, "cw": 201576, "cr": 2071214, "total": 2476941, "msgs": 29}, "2026-06-02": {"in": 308623, "out": 89578, "cw": 397099, "cr": 4842368, "total": 5637668, "msgs": 59}, "2026-06-03": {"in": 242389, "out": 73249, "cw": 356846, "cr": 3578144, "total": 4250628, "msgs": 50}, "2026-06-04": {"in": 229096, "out": 67196, "cw": 329428, "cr": 3507109, "total": 4132829, "msgs": 45}, "2026-06-05": {"in": 243389, "out": 58275, "cw": 251066, "cr": 2917631, "total": 3470361, "msgs": 39}, "2026-06-06": {"in": 34481, "out": 11274, "cw": 40829, "cr": 532048, "total": 618632, "msgs": 7}, "2026-06-07": {"in": 39993, "out": 4606, "cw": 42366, "cr": 421218, "total": 508183, "msgs": 6}, "2026-06-08": {"in": 328705, "out": 89486, "cw": 404680, "cr": 4764847, "total": 5587718, "msgs": 60}, "2026-06-09": {"in": 174721, "out": 50943, "cw": 220975, "cr": 2660902, "total": 3107541, "msgs": 33}, "2026-06-10": {"in": 192804, "out": 53209, "cw": 237262, "cr": 3243404, "total": 3726679, "msgs": 38}, "2026-06-11": {"in": 264012, "out": 79142, "cw": 363028, "cr": 4253885, "total": 4960067, "msgs": 53}, "2026-06-12": {"in": 344839, "out": 94484, "cw": 380399, "cr": 4407235, "total": 5226957, "msgs": 59}, "2026-06-13": {"in": 111772, "out": 31263, "cw": 135661, "cr": 1379242, "total": 1657938, "msgs": 19}, "2026-06-14": {"in": 49520, "out": 11740, "cw": 72441, "cr": 901051, "total": 1034752, "msgs": 10}, "2026-06-15": {"in": 304070, "out": 80518, "cw": 432167, "cr": 4645626, "total": 5462381, "msgs": 55}, "2026-06-16": {"in": 302648, "out": 83332, "cw": 385728, "cr": 4972838, "total": 5744546, "msgs": 56}, "2026-06-17": {"in": 464640, "out": 123727, "cw": 606170, "cr": 7024675, "total": 8219212, "msgs": 83}, "2026-06-18": {"in": 219575, "out": 63070, "cw": 290727, "cr": 3235680, "total": 3809052, "msgs": 43}, "2026-06-19": {"in": 226187, "out": 61166, "cw": 294841, "cr": 2736898, "total": 3319092, "msgs": 42}, "2026-06-20": {"in": 38981, "out": 11847, "cw": 47293, "cr": 432159, "total": 530280, "msgs": 7}, "2026-06-21": {"in": 38446, "out": 10159, "cw": 41198, "cr": 570358, "total": 660161, "msgs": 7}, "2026-06-22": {"in": 169714, "out": 48101, "cw": 261434, "cr": 2936534, "total": 3415783, "msgs": 34}, "2026-06-23": {"in": 369816, "out": 94707, "cw": 463507, "cr": 5896635, "total": 6824665, "msgs": 67}, "2026-06-24": {"in": 61434, "out": 16590, "cw": 86512, "cr": 1025180, "total": 1189716, "msgs": 11}, "2026-06-25": {"in": 80224, "out": 24597, "cw": 125145, "cr": 1106739, "total": 1336705, "msgs": 17}, "2026-06-26": {"in": 217934, "out": 54949, "cw": 265051, "cr": 3138912, "total": 3676846, "msgs": 38}, "2026-06-27": {"in": 39276, "out": 12579, "cw": 44977, "cr": 560508, "total": 657340, "msgs": 7}, "2026-06-28": {"in": 73404, "out": 17374, "cw": 93688, "cr": 744860, "total": 929326, "msgs": 12}, "2026-06-29": {"in": 251170, "out": 58842, "cw": 302642, "cr": 3878518, "total": 4491172, "msgs": 44}}, "monthly": {"2026-04": {"in": 5003587, "out": 1338043, "cw": 6401013, "cr": 71777718, "total": 84520361, "msgs": 897}, "2026-05": {"in": 4537614, "out": 1197189, "cw": 5698546, "cr": 67208501, "total": 78641850, "msgs": 818}, "2026-06": {"in": 5587767, "out": 1514250, "cw": 7174736, "cr": 82386418, "total": 96663171, "msgs": 1030}}, "by_model": {"opus": {"in": 8551931, "out": 2293417, "cw": 10870592, "cr": 176260590, "total": 197976530, "msgs": 1545, "cost": 768.5}, "sonnet": {"in": 3918894, "out": 1054026, "cw": 5026648, "cr": 27347674, "total": 37347242, "msgs": 723, "cost": 54.62}, "haiku": {"in": 1331429, "out": 351265, "cw": 1693474, "cr": 9120142, "total": 12496310, "msgs": 240, "cost": 6.12}, "fable": {"in": 1326714, "out": 350774, "cw": 1683581, "cr": 8644231, "total": 12005300, "msgs": 237, "cost": 18.15}}, "projects": [{"name": "web-app", "total": 63004401, "msgs": 659, "in": 3722115, "out": 987527, "cw": 4625034, "cr": 53669725, "sessions": 18}, {"name": "api-server", "total": 50131036, "msgs": 511, "in": 2862475, "out": 741722, "cw": 3708687, "cr": 42818152, "sessions": 14}, {"name": "data-pipeline", "total": 36906163, "msgs": 384, "in": 2083191, "out": 561701, "cw": 2636726, "cr": 31624545, "sessions": 10}, {"name": "docs-site", "total": 36866590, "msgs": 405, "in": 2200771, "out": 613938, "cw": 2871798, "cr": 31180083, "sessions": 11}, {"name": "mobile-app", "total": 26267177, "msgs": 269, "in": 1489334, "out": 397911, "cw": 1899660, "cr": 22480272, "sessions": 7}, {"name": "infra", "total": 22383966, "msgs": 250, "in": 1295381, "out": 365736, "cw": 1752186, "cr": 18970663, "sessions": 7}, {"name": "ml-notebook", "total": 12713467, "msgs": 135, "in": 750575, "out": 187711, "cw": 917774, "cr": 10857407, "sessions": 3}, {"name": "playground", "total": 11552582, "msgs": 132, "in": 725126, "out": 193236, "cw": 862430, "cr": 9771790, "sessions": 3}], "meta": {"files_total": 420, "files_processed": 420, "parse_errors": 0, "unique_messages": 2745, "months_requested": ["2026-04", "2026-05", "2026-06"]}};
+const fmt = n => n>=1e9 ? (n/1e9).toFixed(2)+'B' : n>=1e6 ? (n/1e6).toFixed(1)+'M' : n>=1e3 ? (n/1e3).toFixed(1)+'K' : String(n);
+const fmtFull = n => n.toLocaleString('en-US');
+const usd = n => '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const C = {accent:'#d4915d',accent2:'#7aa2f7',mint:'#56d4a0',pink:'#e06c9f',yellow:'#e3c567',red:'#e05c6e',grey:'#5a5f73'};
+const MODEL_COLOR = {opus:C.accent,sonnet:C.accent2,haiku:C.mint,fable:C.pink,other:C.grey};
+
+const days = Object.keys(DATA.daily).sort();
+const t = DATA.totals;
+
+document.getElementById('fcount').textContent = fmtFull(DATA.meta.files_processed);
+document.getElementById('pGen').textContent = '2026-06-30';
+document.getElementById('pPeriod').textContent = days.length ? (days[0] + ' ~ ' + days[days.length-1]) : '데이터 없음';
+document.getElementById('pDays').textContent = days.length;
+
+const app = document.getElementById('app');
+
+if(!days.length){
+  app.innerHTML = `<div class="card empty">선택한 기간(${DATA.meta.months_requested.join(', ')})에 집계할 사용량 데이터가 없습니다.<br>
+    <code>--months</code> 값을 늘리거나 <code>--projects-dir</code> 경로를 확인하세요.</div>`;
+} else {
+  renderReport();
+}
+
+function renderReport(){
+  app.innerHTML = `
+  <section>
+    <div class="sec-title">핵심 지표</div>
+    <div class="kpis" id="kpis"></div>
+  </section>
+  <section>
+    <div class="sec-title">사용량 추이</div>
+    <div class="grid2">
+      <div class="card">
+        <h3>일별 토큰 사용량</h3>
+        <div class="desc">날짜별 총 토큰(캐시 포함). 막대 위 라인은 출력 토큰입니다.</div>
+        <div class="chart-box" style="height:300px"><canvas id="dailyChart"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>토큰 구성</h3>
+        <div class="desc">입력 · 출력 · 캐시 쓰기 · 캐시 읽기 비중</div>
+        <div class="chart-box" style="height:220px"><canvas id="compChart"></canvas></div>
+        <div class="legend" id="compLegend"></div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="sec-title">모델별 분포</div>
+    <div class="grid2">
+      <div class="card">
+        <h3>모델별 토큰 &amp; 추정 비용</h3>
+        <div class="desc">총 토큰 기준 비중과 모델별 추정 비용(USD)</div>
+        <div id="modelBars" style="margin-top:8px"></div>
+      </div>
+      <div class="card">
+        <h3>월별 사용량</h3>
+        <div class="desc">월간 총 토큰</div>
+        <div class="chart-box" style="height:220px"><canvas id="monthChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="sec-title">프로젝트별 사용량 (Top 15)</div>
+    <div class="card">
+      <table>
+        <thead><tr>
+          <th>프로젝트</th><th class="num">총 토큰</th><th class="num">메시지</th>
+          <th class="num">세션</th><th class="num">출력 토큰</th><th class="num">비중</th>
+        </tr></thead>
+        <tbody id="projBody"></tbody>
+      </table>
+    </div>
+  </section>
+  <div class="note" id="note"></div>`;
+
+  // KPIs
+  const kpis = [
+    {label:'총 토큰', val:fmt(t.total), meta:fmtFull(t.total)+' tokens', bar:C.accent},
+    {label:'추정 비용', val:usd(DATA.total_cost), meta:'공개 단가 기반 추정', bar:C.mint},
+    {label:'총 메시지', val:fmtFull(t.msgs), meta:'assistant 응답 수', bar:C.accent2},
+    {label:'출력 토큰', val:fmt(t.out), meta:fmtFull(t.out)+' tokens', bar:C.pink},
+    {label:'캐시 읽기', val:fmt(t.cr), meta:(t.total?((t.cr/t.total)*100).toFixed(1):0)+'% of total', bar:C.yellow},
+    {label:'활성 일수', val:days.length+'일', meta:'로그 존재 기간', bar:C.red},
+  ];
+  document.getElementById('kpis').innerHTML = kpis.map(k=>
+    `<div class="kpi" style="--bar:${k.bar}"><div class="label">${k.label}</div>
+     <div class="val">${k.val}</div><div class="meta">${k.meta}</div></div>`).join('');
+
+  new Chart(document.getElementById('dailyChart'),{
+    data:{labels:days.map(d=>d.slice(5)),datasets:[
+      {type:'bar',label:'총 토큰',yAxisID:'y',data:days.map(d=>DATA.daily[d].total),
+        backgroundColor:'rgba(212,145,93,.55)',borderColor:C.accent,borderWidth:0,borderRadius:4,order:2},
+      {type:'line',label:'출력 토큰',yAxisID:'y2',data:days.map(d=>DATA.daily[d].out),
+        borderColor:C.pink,backgroundColor:C.pink,tension:.35,pointRadius:2,borderWidth:2,fill:false,order:1}
+    ]},options:baseOpts({dualAxis:true})
+  });
+
+  const comp=[{k:'캐시 읽기',v:t.cr,c:C.yellow},{k:'캐시 쓰기',v:t.cw,c:C.accent},
+    {k:'출력',v:t.out,c:C.pink},{k:'입력',v:t.in,c:C.accent2}];
+  new Chart(document.getElementById('compChart'),{type:'doughnut',
+    data:{labels:comp.map(c=>c.k),datasets:[{data:comp.map(c=>c.v),
+      backgroundColor:comp.map(c=>c.c),borderColor:'#181a24',borderWidth:2,hoverOffset:6}]},
+    options:{cutout:'62%',plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>` ${c.label}: ${fmt(c.raw)} (${(c.raw/t.total*100).toFixed(1)}%)`}}}}});
+  document.getElementById('compLegend').innerHTML = comp.map(c=>
+    `<div class="it"><span class="sw" style="background:${c.c}"></span>${c.k} <b>${(c.v/t.total*100).toFixed(1)}%</b></div>`).join('');
+
+  const models = Object.entries(DATA.by_model).filter(([k,v])=>v.total>0).sort((a,b)=>b[1].total-a[1].total);
+  const maxModel = models.length?models[0][1].total:1;
+  document.getElementById('modelBars').innerHTML = models.map(([name,v])=>{
+    const pct=(v.total/maxModel*100).toFixed(1), share=(v.total/t.total*100).toFixed(1);
+    return `<div class="model-row"><div class="nm" style="color:${MODEL_COLOR[name]||C.grey}">${name}</div>
+      <div class="track"><div class="tf" style="width:${pct}%;background:${MODEL_COLOR[name]||C.grey}"></div></div>
+      <div class="vv">${fmt(v.total)} · ${share}%</div><div class="cc">${usd(v.cost||0)}</div></div>`;
+  }).join('');
+
+  const months=Object.keys(DATA.monthly).sort();
+  new Chart(document.getElementById('monthChart'),{type:'bar',
+    data:{labels:months,datasets:[{label:'총 토큰',data:months.map(m=>DATA.monthly[m].total),
+      backgroundColor:'rgba(122,162,247,.6)',borderColor:C.accent2,borderRadius:6,yAxisID:'y'}]},
+    options:baseOpts({})});
+
+  const maxProj=DATA.projects.length?DATA.projects[0].total:1;
+  document.getElementById('projBody').innerHTML = DATA.projects.slice(0,15).map((p,i)=>{
+    const share=(p.total/t.total*100).toFixed(1);
+    return `<tr><td><div class="pname"><span class="swatch" style="background:hsl(${(i*47)%360} 55% 60%)"></span>${esc(p.name)}</div></td>
+      <td class="num barcell">${fmt(p.total)}<div class="fill" style="width:${(p.total/maxProj*70).toFixed(1)}px"></div></td>
+      <td class="num">${fmtFull(p.msgs)}</td><td class="num">${p.sessions}</td>
+      <td class="num">${fmt(p.out)}</td><td class="num">${share}%</td></tr>`;
+  }).join('');
+
+  const nMonths=DATA.meta.months_requested.length;
+  document.getElementById('note').innerHTML =
+    `<b>데이터 범위 ·</b> 최근 ${nMonths}개월(${DATA.meta.months_requested.join(', ')})을 대상으로 했으며, 실제 로그가 존재하는 구간은 `
+    +`<b>${days[0]} ~ ${days[days.length-1]}</b> (약 ${days.length}일)입니다. 로그가 보관되지 않은 이전 기간은 집계에서 제외됩니다.<br><br>`
+    +`<b>토큰 구성 ·</b> 전체 토큰의 ${(t.cr/t.total*100).toFixed(1)}%가 캐시 읽기(cache read)입니다. Claude Code가 프롬프트 캐싱을 적극 활용하기 때문이며, 캐시 읽기는 일반 입력 대비 약 1/10 단가가 적용됩니다.<br><br>`
+    +`<b>비용 추정 주의 ·</b> 표시된 비용은 모델별 <i>공개 API 단가 추정치</i>로 계산한 값입니다. 구독 플랜·실제 청구액과 다를 수 있으며 참고용입니다.<br><br>`
+    +`<b>집계 방식 ·</b> assistant 메시지의 usage 필드를 합산했으며, message id + requestId 기준으로 중복을 제거(고유 메시지 ${fmtFull(DATA.meta.unique_messages)}건)했습니다.`;
+}
+
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+function baseOpts({dualAxis}){
+  const grid={color:'rgba(255,255,255,.05)',drawBorder:false};
+  const ticks={color:'#9498ab',font:{size:11}};
+  const o={responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+    plugins:{legend:{display:!!dualAxis,labels:{color:'#9498ab',usePointStyle:true,boxWidth:8,font:{size:11}}},
+      tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmtFull(c.raw)}`}}},
+    scales:{x:{grid:{display:false},ticks:Object.assign({maxRotation:0,autoSkip:true,maxTicksLimit:12},ticks)},
+      y:{grid,ticks:Object.assign({callback:v=>fmt(v)},ticks),beginAtZero:true}}};
+  if(dualAxis){o.scales.y2={position:'right',grid:{display:false},
+    ticks:Object.assign({callback:v=>fmt(v)},ticks),beginAtZero:true};}
+  return o;
+}
+</script>
+</body>
+</html>
