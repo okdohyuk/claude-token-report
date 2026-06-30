@@ -9,6 +9,7 @@ data.json
 
 # 생성된 리포트 (template.html 과 examples/ 의 샘플은 예외)
 /claude-token-report.html
+/claude-token-report-*.html
 /report.html
 /*-report.html
 /output/

@@ -9,7 +9,7 @@ Claude Code 토큰 사용량 리포트 생성기.
 개인 정보가 포함될 수 있으므로 저장소에 커밋하지 말 것 (.gitignore 참고).
 
 사용 예:
-    python generate_report.py                 # 최근 3개월, ./claude-token-report.html
+    python generate_report.py                 # 최근 3개월, ./claude-token-report-YYYY-MM-DD.html
     python generate_report.py --months 6
     python generate_report.py -o report.html --data data.json
 """
@@ -19,9 +19,13 @@ import argparse
 import glob
 import json
 import os
+import re
 import sys
 from collections import defaultdict
 from datetime import datetime, timezone
+
+# 출력 파일명에 -o 미지정 시 사용하는 기본 스템 (확장자 제외)
+DEFAULT_OUTPUT_STEM = "claude-token-report"
 
 # ---------------------------------------------------------------------------
 # 모델별 추정 단가 (USD / 1M tokens) — 공개 API 가격 기준의 "추정치".
@@ -63,6 +67,17 @@ def recent_months(n: int, now: datetime) -> list[str]:
     return sorted(months)
 
 
+def basename_any(path: str) -> str:
+    """'/' 와 '\\' 를 모두 구분자로 보고 마지막 세그먼트를 반환.
+
+    os.path.basename 은 실행 중인 OS 의 구분자만 인식하므로, 윈도우에서
+    macOS/Linux 로그('/')를 읽거나 그 반대인 경우 경로를 분해하지 못한다.
+    이 헬퍼는 어느 OS 에서 기록된 cwd 든 마지막 폴더명을 안전하게 뽑는다.
+    """
+    seg = re.split(r"[\\/]+", path.rstrip("\\/"))
+    return seg[-1] if seg else ""
+
+
 def clean_project(cwd: str | None, encoded_dir: str) -> str:
     """프로젝트 표시명을 사용자명 노출 없이 추출.
 
@@ -70,14 +85,15 @@ def clean_project(cwd: str | None, encoded_dir: str) -> str:
            단, cwd가 홈 디렉토리 자체이면 basename이 사용자명이 되므로 "(home)" 표시.
     2순위: 인코딩된 디렉토리명의 마지막 세그먼트
     """
-    home = os.path.expanduser("~").rstrip("/")
-    username = os.path.basename(home)
+    home = os.path.expanduser("~")
+    username = basename_any(home)
+    # 구분자 차이('/' vs '\\')를 무시하고 홈 경로와 비교하기 위한 정규화 키
+    home_key = home.rstrip("\\/").replace("\\", "/")
     name = None
     if cwd:
-        norm = cwd.rstrip("/")
-        if norm == home:           # 홈에서 실행한 세션
+        if cwd.rstrip("\\/").replace("\\", "/") == home_key:   # 홈에서 실행한 세션
             return "(home)"
-        base = os.path.basename(norm)
+        base = basename_any(cwd)
         if base:
             name = base
     if name is None:
@@ -204,13 +220,42 @@ def render(data: dict, template_path: str, generated: str) -> str:
             .replace("__GEN__", generated))
 
 
+def with_date(path: str, when: datetime) -> str:
+    """파일명 스템 뒤에 -YYYY-MM-DD 를 삽입한다.
+
+    예) claude-token-report.html -> claude-token-report-2026-06-30.html
+    os.path 로 디렉토리/확장자를 분리하므로 윈도우·리눅스·macOS 에서 동일하게 동작한다.
+    """
+    head, base = os.path.split(path)
+    stem, ext = os.path.splitext(base)
+    return os.path.join(head, f"{stem}-{when:%Y-%m-%d}{ext}")
+
+
+def avoid_overwrite(path: str) -> str:
+    """경로가 이미 존재하면 -2, -3 ... 순번을 붙여 충돌 없는 경로를 돌려준다.
+
+    같은 날 여러 번 실행해도 이전 리포트를 덮어쓰지 않도록 한다.
+    """
+    if not os.path.exists(path):
+        return path
+    head, base = os.path.split(path)
+    stem, ext = os.path.splitext(base)
+    i = 2
+    while True:
+        cand = os.path.join(head, f"{stem}-{i}{ext}")
+        if not os.path.exists(cand):
+            return cand
+        i += 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Claude Code 토큰 사용량 HTML 리포트 생성기")
     ap.add_argument("--months", type=int, default=3, help="집계할 최근 개월 수 (기본 3)")
     ap.add_argument("--projects-dir", default="~/.claude/projects",
                     help="Claude Code 로그 디렉토리 (기본 ~/.claude/projects)")
-    ap.add_argument("-o", "--output", default="claude-token-report.html",
-                    help="출력 HTML 경로")
+    ap.add_argument("-o", "--output", default=None,
+                    help="출력 HTML 경로 (미지정 시 claude-token-report-YYYY-MM-DD.html, "
+                         "같은 날 재실행하면 -2, -3 순번을 붙여 중복 방지)")
     ap.add_argument("--data", default=None, help="집계 JSON도 저장할 경로(선택)")
     ap.add_argument("--template", default=None,
                     help="HTML 템플릿 경로 (기본: 스크립트 옆 template.html)")
@@ -235,8 +280,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[오류] 템플릿을 찾을 수 없습니다: {template}", file=sys.stderr)
         return 1
 
+    # 출력 경로 결정: -o 미지정 시 날짜를 붙이고 같은 날 중복은 순번으로 회피.
+    # -o 를 명시하면 사용자가 준 경로를 그대로 존중한다.
+    if args.output is None:
+        output = avoid_overwrite(with_date(f"{DEFAULT_OUTPUT_STEM}.html", now))
+    else:
+        output = args.output
+
     html = render(data, template, now.strftime("%Y-%m-%d"))
-    with open(args.output, "w", encoding="utf-8") as fh:
+    with open(output, "w", encoding="utf-8") as fh:
         fh.write(html)
 
     if args.data:
@@ -246,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
     t = data["totals"]
     days = list(data["daily"].keys())
     span = f"{days[0]} ~ {days[-1]}" if days else "데이터 없음"
-    print(f"완료: {args.output}")
+    print(f"완료: {output}")
     print(f"  기간       : {span} ({len(days)}일)")
     print(f"  총 토큰    : {t.get('total', 0):,}")
     print(f"  추정 비용  : ${data['total_cost']:,.2f}")
