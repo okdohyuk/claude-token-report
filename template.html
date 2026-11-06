@@ -124,6 +124,11 @@ const MODEL_COLOR = {opus:C.accent,sonnet:C.accent2,haiku:C.mint,fable:C.pink,ot
 
 const days = Object.keys(DATA.daily).sort();
 const t = DATA.totals;
+const GW = DATA.gateway && DATA.gateway.requests ? DATA.gateway : null;
+const GU = DATA.gateway_usage && DATA.gateway_usage.requests ? DATA.gateway_usage : null;
+const FAMILY_COLOR = {opus:C.accent,sonnet:C.accent2,haiku:C.mint,fable:C.pink,
+  kiro:C.yellow,gemini:'#5bc0de',gpt:'#9b8cf0',devin:C.red,other:C.grey};
+const GW_COLORS = [C.accent2,C.accent,C.mint,C.pink,C.yellow];
 
 document.getElementById('fcount').textContent = fmtFull(DATA.meta.files_processed);
 document.getElementById('pGen').textContent = '__GEN__';
@@ -132,11 +137,26 @@ document.getElementById('pDays').textContent = days.length;
 
 const app = document.getElementById('app');
 
-if(!days.length){
-  app.innerHTML = `<div class="card empty">선택한 기간(${DATA.meta.months_requested.join(', ')})에 집계할 사용량 데이터가 없습니다.<br>
-    <code>--months</code> 값을 늘리거나 <code>--projects-dir</code> 경로를 확인하세요.</div>`;
+const periodLabel = DATA.meta.days_requested
+  ? `최근 ${DATA.meta.days_requested}일`
+  : `최근 ${DATA.meta.months_requested.length}개월(${DATA.meta.months_requested.join(', ')})`;
+if(GW){
+  const gwDays = Object.keys(GW.daily).sort();
+  if(!days.length && gwDays.length){
+    document.getElementById('pPeriod').textContent = gwDays[0] + ' ~ ' + gwDays[gwDays.length-1];
+    document.getElementById('pDays').textContent = gwDays.length;
+  }
+  document.querySelector('footer span').textContent =
+    '데이터 출처 · ~/.claude/projects 로컬 대화 로그 + 게이트웨이 로그(' + GW.gateways.join(', ') + ')';
+}
+
+if(!days.length && !GW && !GU){
+  app.innerHTML = `<div class="card empty">선택한 기간(${periodLabel})에 집계할 사용량 데이터가 없습니다.<br>
+    <code>--months</code>/<code>--days</code> 값을 늘리거나 <code>--projects-dir</code> 경로를 확인하세요.</div>`;
 } else {
-  renderReport();
+  if(days.length) renderReport();
+  if(GU) renderGatewayUsage();
+  if(GW) renderGateway();
 }
 
 function renderReport(){
@@ -226,9 +246,10 @@ function renderReport(){
   const maxModel = models.length?models[0][1].total:1;
   document.getElementById('modelBars').innerHTML = models.map(([name,v])=>{
     const pct=(v.total/maxModel*100).toFixed(1), share=(v.total/t.total*100).toFixed(1);
-    return `<div class="model-row"><div class="nm" style="color:${MODEL_COLOR[name]||C.grey}">${name}</div>
-      <div class="track"><div class="tf" style="width:${pct}%;background:${MODEL_COLOR[name]||C.grey}"></div></div>
-      <div class="vv">${fmt(v.total)} · ${share}%</div><div class="cc">${usd(v.cost||0)}</div></div>`;
+    const color=FAMILY_COLOR[name]||C.grey;
+    return `<div class="model-row"><div class="nm" style="color:${color}">${name}</div>
+      <div class="track"><div class="tf" style="width:${pct}%;background:${color}"></div></div>
+      <div class="vv">${fmt(v.total)} · ${share}%</div><div class="cc">${v.unpriced?'단가 없음':usd(v.cost||0)}</div></div>`;
   }).join('');
 
   const months=Object.keys(DATA.monthly).sort();
@@ -246,13 +267,190 @@ function renderReport(){
       <td class="num">${fmt(p.out)}</td><td class="num">${share}%</td></tr>`;
   }).join('');
 
-  const nMonths=DATA.meta.months_requested.length;
   document.getElementById('note').innerHTML =
-    `<b>데이터 범위 ·</b> 최근 ${nMonths}개월(${DATA.meta.months_requested.join(', ')})을 대상으로 했으며, 실제 로그가 존재하는 구간은 `
+    `<b>데이터 범위 ·</b> ${periodLabel}을 대상으로 했으며, 실제 로그가 존재하는 구간은 `
     +`<b>${days[0]} ~ ${days[days.length-1]}</b> (약 ${days.length}일)입니다. 로그가 보관되지 않은 이전 기간은 집계에서 제외됩니다.<br><br>`
     +`<b>토큰 구성 ·</b> 전체 토큰의 ${(t.cr/t.total*100).toFixed(1)}%가 캐시 읽기(cache read)입니다. Claude Code가 프롬프트 캐싱을 적극 활용하기 때문이며, 캐시 읽기는 일반 입력 대비 약 1/10 단가가 적용됩니다.<br><br>`
     +`<b>비용 추정 주의 ·</b> 표시된 비용은 모델별 <i>공개 API 단가 추정치</i>로 계산한 값입니다. 구독 플랜·실제 청구액과 다를 수 있으며 참고용입니다.<br><br>`
     +`<b>집계 방식 ·</b> assistant 메시지의 usage 필드를 합산했으며, message id + requestId 기준으로 중복을 제거(고유 메시지 ${fmtFull(DATA.meta.unique_messages)}건)했습니다.`;
+}
+
+// 게이트웨이 사용량 수집(JSONL) 기반 토큰 — 게이트웨이를 지나는 모든 PC·모델의 실제 토큰.
+// 이 PC의 로컬 로그와 겹치므로 위 로컬 합계에 더하지 않는다.
+function renderGatewayUsage(){
+  const u = GU, ut = u.totals, uDays = Object.keys(u.daily).sort();
+  const pct = n => ut.total ? (n/ut.total*100).toFixed(1)+'%' : '0%';
+  const sec = document.createElement('div');
+  sec.innerHTML = `
+  <section>
+    <div class="sec-title">전체 토큰 (게이트웨이 사용량 수집 · ${u.span.join(' ~ ')})</div>
+    <div class="kpis" id="guKpis"></div>
+  </section>
+  <section>
+    <div class="grid2">
+      <div class="card">
+        <h3>일별 토큰</h3>
+        <div class="desc">게이트웨이를 지난 모든 요청의 토큰(캐시 포함)</div>
+        <div class="chart-box" style="height:260px"><canvas id="guDaily"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>모델 계열별 토큰 &amp; 추정 비용</h3>
+        <div class="desc">Claude 계열만 공개 단가 적용</div>
+        <div id="guFamilies" style="margin-top:8px"></div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="grid2">
+      <div class="card">
+        <h3>클라이언트별 토큰</h3>
+        <div class="desc">요청을 보낸 PC</div>
+        <table><thead><tr><th>클라이언트</th><th class="num">토큰</th><th class="num">요청</th><th class="num">비중</th></tr></thead>
+        <tbody id="guClients"></tbody></table>
+      </div>
+      <div class="card">
+        <h3>모델별 토큰 (Top ${u.by_model.length})</h3>
+        <div class="desc">요청 모델명 기준</div>
+        <table><thead><tr><th>모델</th><th class="num">토큰</th><th class="num">요청</th><th class="num">비중</th></tr></thead>
+        <tbody id="guModels"></tbody></table>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="card">
+      <h3>계정별 토큰</h3>
+      <div class="desc">업스트림 계정(이메일은 일부 마스킹)</div>
+      <table><thead><tr><th>계정</th><th class="num">토큰</th><th class="num">요청</th><th class="num">출력</th><th class="num">비중</th></tr></thead>
+      <tbody id="guAccounts"></tbody></table>
+    </div>
+  </section>
+  <div class="note"><b>전체 토큰 ·</b> CLIProxyAPI 사용량 queue를 주기적으로 받아 쌓은 기록(${u.files}개 파일, ${fmtFull(u.requests)}건) 기준입니다.
+    이 PC의 Claude Code 요청도 여기에 포함되므로 위 로컬 합계와 <i>더하면 중복</i>입니다. 수집을 시작하기 전 기간은 비어 있습니다.</div>`;
+  app.appendChild(sec);
+
+  const kpis = [
+    {label:'전체 토큰', val:fmt(ut.total), meta:fmtFull(ut.total)+' tokens', bar:C.accent},
+    {label:'추정 비용', val:usd(u.total_cost), meta:'Claude 계열 공개 단가 기준', bar:C.mint},
+    {label:'요청', val:fmtFull(u.requests), meta:'수집된 사용량 기록', bar:C.accent2},
+    {label:'출력 토큰', val:fmt(ut.out), meta:fmtFull(ut.out)+' tokens', bar:C.pink},
+    {label:'캐시 읽기', val:fmt(ut.cr), meta:pct(ut.cr)+' of total', bar:C.yellow},
+    {label:'클라이언트', val:u.by_client.length, meta:'요청을 보낸 PC 수', bar:C.red},
+  ];
+  document.getElementById('guKpis').innerHTML = kpis.map(k=>
+    `<div class="kpi" style="--bar:${k.bar}"><div class="label">${k.label}</div>
+     <div class="val">${k.val}</div><div class="meta">${k.meta}</div></div>`).join('');
+
+  new Chart(document.getElementById('guDaily'),{type:'bar',
+    data:{labels:uDays.map(d=>d.slice(5)),datasets:[{label:'총 토큰',data:uDays.map(d=>u.daily[d].total),
+      backgroundColor:'rgba(122,162,247,.6)',borderColor:C.accent2,borderRadius:4}]},
+    options:baseOpts({})});
+
+  const fams = Object.entries(u.by_family).filter(([k,v])=>v.total>0).sort((a,b)=>b[1].total-a[1].total);
+  const maxFam = fams.length?fams[0][1].total:1;
+  document.getElementById('guFamilies').innerHTML = fams.map(([name,v])=>{
+    const color=FAMILY_COLOR[name]||C.grey;
+    return `<div class="model-row"><div class="nm" style="color:${color}">${name}</div>
+      <div class="track"><div class="tf" style="width:${(v.total/maxFam*100).toFixed(1)}%;background:${color}"></div></div>
+      <div class="vv">${fmt(v.total)} · ${pct(v.total)}</div><div class="cc">${v.unpriced?'단가 없음':usd(v.cost||0)}</div></div>`;
+  }).join('');
+
+  const row = (name,v,color,extra) =>
+    `<tr><td><div class="pname"><span class="swatch" style="background:${color}"></span>${esc(name)}</div></td>
+     <td class="num">${fmt(v.total)}</td><td class="num">${fmtFull(v.req)}</td>${extra?`<td class="num">${fmt(v.out)}</td>`:''}
+     <td class="num">${pct(v.total)}</td></tr>`;
+  document.getElementById('guClients').innerHTML =
+    u.by_client.map((c,i)=>row(c.name,c,`hsl(${(i*67)%360} 55% 60%)`,false)).join('');
+  document.getElementById('guModels').innerHTML =
+    u.by_model.map(m=>row(m.name,m,FAMILY_COLOR[m.fam]||C.grey,false)).join('');
+  document.getElementById('guAccounts').innerHTML =
+    u.by_account.map((a,i)=>row(a.name,a,`hsl(${(i*47+20)%360} 55% 60%)`,true)).join('');
+}
+
+// 게이트웨이(CLIProxyAPI) 로그 기반 요청 현황 — 다른 PC·다른 클라이언트까지 포함한다.
+function renderGateway(){
+  const g = GW, gwDays = Object.keys(g.daily).sort();
+  const rate = n => g.requests ? (n/g.requests*100).toFixed(1)+'%' : '0%';
+  const sec = document.createElement('div');
+  sec.innerHTML = `
+  <section>
+    <div class="sec-title">게이트웨이 요청 (CLIProxyAPI · ${g.gateways.map(esc).join(', ')})</div>
+    <div class="kpis" id="gwKpis"></div>
+  </section>
+  <section>
+    <div class="card">
+      <h3>일별 요청 수</h3>
+      <div class="desc">게이트웨이별 추론 요청(POST messages · chat/completions · responses). count_tokens·모델 조회는 제외.</div>
+      <div class="chart-box" style="height:280px"><canvas id="gwDaily"></canvas></div>
+    </div>
+  </section>
+  <section>
+    <div class="grid2">
+      <div class="card">
+        <h3>모델별 요청 (Top ${g.by_model.length} / ${g.models_total})</h3>
+        <div class="desc">요청 모델명 기준. 색은 모델 계열(Claude · Kiro · Gemini · GPT · Devin)</div>
+        <table><thead><tr><th>모델</th><th class="num">요청</th><th class="num">성공률</th><th class="num">비중</th></tr></thead>
+        <tbody id="gwModels"></tbody></table>
+      </div>
+      <div class="card">
+        <h3>클라이언트별 요청</h3>
+        <div class="desc">요청을 보낸 PC(IP 또는 --client-name 이름)</div>
+        <table><thead><tr><th>클라이언트</th><th class="num">요청</th><th class="num">비중</th></tr></thead>
+        <tbody id="gwClients"></tbody></table>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="grid2">
+      <div class="card">
+        <h3>계정별 요청</h3>
+        <div class="desc">업스트림 계정(이메일은 일부 마스킹)</div>
+        <table><thead><tr><th>계정</th><th class="num">요청</th><th class="num">성공률</th><th class="num">비중</th></tr></thead>
+        <tbody id="gwAccounts"></tbody></table>
+      </div>
+      <div class="card">
+        <h3>응답 상태</h3>
+        <div class="desc">HTTP 상태 코드 분포</div>
+        <table><thead><tr><th>상태</th><th class="num">요청</th><th class="num">비중</th></tr></thead>
+        <tbody id="gwStatus"></tbody></table>
+      </div>
+    </div>
+  </section>
+  <div class="note"><b>게이트웨이 집계 ·</b> CLIProxyAPI 로그에는 토큰 수가 남지 않아 <i>요청 수</i>만 집계합니다.
+    같은 요청 ID의 계정·모델 줄과 응답 줄을 이어 붙였고, 모델을 찾지 못한 요청은 (unknown)입니다.
+    위 토큰·비용은 이 PC의 Claude Code 로그 기준이라 다른 PC·Codex·OpenCode 등의 사용량은 이 구역에만 나타납니다.</div>`;
+  app.appendChild(sec);
+
+  const kpis = [
+    {label:'총 요청', val:fmt(g.requests), meta:fmtFull(g.requests)+'건', bar:C.accent2},
+    {label:'성공률', val:rate(g.ok), meta:'HTTP 2xx 비율', bar:C.mint},
+    {label:'평균 응답 시간', val:g.avg_sec+'s', meta:'요청 완료까지(스트리밍 포함)', bar:C.yellow},
+    {label:'클라이언트', val:g.by_client.length, meta:'요청을 보낸 PC 수', bar:C.pink},
+    {label:'모델', val:g.models_total, meta:'사용된 모델 수', bar:C.accent},
+    {label:'일평균 요청', val:fmt(Math.round(g.requests/Math.max(1,gwDays.length))), meta:gwDays.length+'일 기준', bar:C.red},
+  ];
+  document.getElementById('gwKpis').innerHTML = kpis.map(k=>
+    `<div class="kpi" style="--bar:${k.bar}"><div class="label">${k.label}</div>
+     <div class="val">${k.val}</div><div class="meta">${k.meta}</div></div>`).join('');
+
+  new Chart(document.getElementById('gwDaily'),{type:'bar',
+    data:{labels:gwDays.map(d=>d.slice(5)),datasets:g.gateways.map((name,i)=>({
+      label:name,data:gwDays.map(d=>g.daily[d]['gw:'+name]||0),stack:'gw',
+      backgroundColor:GW_COLORS[i%GW_COLORS.length],borderRadius:3}))},
+    options:Object.assign(baseOpts({}),{plugins:{legend:{display:g.gateways.length>1,
+      labels:{color:'#9498ab',usePointStyle:true,boxWidth:8,font:{size:11}}}}})});
+
+  const row = (name,v,color,withRate) =>
+    `<tr><td><div class="pname"><span class="swatch" style="background:${color}"></span>${esc(name)}</div></td>
+     <td class="num">${fmtFull(v.req)}</td>${withRate?`<td class="num">${(v.ok/v.req*100).toFixed(1)}%</td>`:''}
+     <td class="num">${rate(v.req)}</td></tr>`;
+  document.getElementById('gwModels').innerHTML =
+    g.by_model.map(m=>row(m.name,m,FAMILY_COLOR[m.fam]||C.grey,true)).join('');
+  document.getElementById('gwClients').innerHTML =
+    g.by_client.map((c,i)=>row(c.name,c,`hsl(${(i*67)%360} 55% 60%)`,false)).join('');
+  document.getElementById('gwAccounts').innerHTML =
+    g.by_account.map((a,i)=>row(a.name,a,`hsl(${(i*47+20)%360} 55% 60%)`,true)).join('');
+  document.getElementById('gwStatus').innerHTML = Object.entries(g.status).map(([code,n])=>
+    row(code,{req:n},code.startsWith('2')?C.mint:code==='429'?C.yellow:C.red,false)).join('');
 }
 
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}

@@ -80,10 +80,13 @@ open claude-token-report-2026-06-30.html        # macOS
 | 옵션 | 기본값 | 설명 |
 |------|--------|------|
 | `--months N` | `3` | 집계할 최근 개월 수 |
+| `--days N` | (없음) | 최근 N일만 집계. 지정하면 `--months` 대신 사용 (예: `--days 30`) |
 | `--projects-dir PATH` | `~/.claude/projects` | Claude Code 로그 디렉토리 |
 | `-o, --output PATH` | `claude-token-report-<날짜>.html` | 출력 HTML 경로. 미지정 시 실행 날짜가 붙고 같은 날 재실행하면 `-2`, `-3` 순번으로 중복 방지 |
 | `--data PATH` | (없음) | 집계 JSON도 함께 저장 |
 | `--template PATH` | `template.html` | HTML 템플릿 경로 |
+| `--gateway-log 이름=경로` | (없음) | [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 게이트웨이 로그도 집계. 여러 번 지정 가능 |
+| `--client-name IP=이름` | (없음) | 게이트웨이 클라이언트 IP에 표시 이름 지정. 여러 번 지정 가능 |
 
 ```bash
 # 예: 최근 6개월, 파일명 지정
@@ -133,3 +136,43 @@ claude-token-report/
 ## 라이선스
 
 MIT © okdohyuk
+
+## 게이트웨이(CLIProxyAPI)를 쓰는 경우
+
+Claude Code를 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 같은 게이트웨이로 연결하면
+**다른 PC·Codex·OpenCode 등의 요청은 이 PC의 `~/.claude/projects`에 남지 않습니다.**
+`--gateway-log`로 게이트웨이 로그를 넘기면 리포트 하단에 **게이트웨이 요청** 구역이 추가됩니다.
+
+```bash
+python generate_report.py --days 30 \
+  --gateway-log mac=~/Library/Logs/cliproxyapi.log \
+  --client-name 100.64.0.2=work-mac
+```
+
+- 요청 ID가 같은 계정·모델 로그 줄과 응답(`gin_logger`) 줄을 이어 **모델별 · 계정별 · 클라이언트별 · 일별 요청 수**, 성공률, 응답 상태를 집계합니다.
+- 게이트웨이 로그에는 토큰 수가 없어 **요청 수만** 집계합니다. 토큰·비용은 여전히 로컬 Claude Code 로그 기준입니다.
+- 추론 요청(`messages`, `chat/completions`, `responses`, Gemini `generateContent`)만 셉니다. `count_tokens`·모델 조회·관리 API는 제외합니다.
+- 계정 이메일은 앞뒤 2자만 남기고 마스킹합니다.
+- Kiro · Gemini · GPT · Devin 모델은 Anthropic 단가를 적용하지 않고 "단가 없음"으로 표시합니다.
+
+### 게이트웨이 토큰까지 합치기 (`--gateway-usage`)
+
+게이트웨이 로그에는 토큰이 없지만, CLIProxyAPI의 사용량 통계(`usage-statistics-enabled: true`)를 켜면
+`GET /v8/management/observability/usage/queue`가 요청별 토큰을 돌려줍니다. 이 queue는 **조회하면 비워지고 메모리에만 보관**되므로,
+주기적으로 받아 JSONL로 쌓아 두고 `--gateway-usage`로 넘기면 리포트에 **전체 토큰** 구역이 추가됩니다.
+
+```bash
+python generate_report.py --days 30 \
+  --gateway-usage mac='~/Library/Application Support/cliproxy-usage/*.jsonl'
+```
+
+JSONL 한 줄의 최소 형식:
+
+```json
+{"ts":"2026-11-06T17:12:27+09:00","request_id":"…","provider":"claude","model":"claude-sonnet-5",
+ "account":"user@example.com","client_ip":"100.64.0.2",
+ "tokens":{"input_tokens":141,"output_tokens":4,"cache_read_tokens":0,"cache_creation_tokens":0,"total_tokens":145}}
+```
+
+- 게이트웨이를 지나는 이 PC의 요청도 포함되므로 로컬 합계와 **더하면 중복**입니다. 전체 사용량은 이 구역 기준으로 보세요.
+- 수집을 시작하기 전 기간의 토큰은 복구할 수 없습니다.
